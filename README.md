@@ -59,8 +59,3 @@ sequenceDiagram
 		API-->>Client: diarization + enriched segment genders + overall gender
 	end
 ```
-
-## Notes
-
-- The service is designed to avoid torchcodec runtime decoding by passing in-memory waveform dictionaries into pyannote.
-- Startup downloads from Hugging Face are expected on first run and can increase cold-start time.
