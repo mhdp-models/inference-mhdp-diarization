@@ -1,0 +1,30 @@
+services:
+  speaker-diarization-api:
+    image: beijuka/speaker-diarization-api:latest
+    container_name: speaker-diarization-api
+    env_file:
+      - .env
+    ports:
+      - "8010:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - HF_TOKEN=${HF_TOKEN}
+      - INFERENCE_DEVICE=${INFERENCE_DEVICE:-auto}
+      - MODEL_ID=${MODEL_ID:-mhdp-africa/speaker-segmentation-callhome-voxconverse-diarization-v1}
+      - GENDER_MODEL_ID=${GENDER_MODEL_ID:-mhdp-africa/gender_classification_MHDP_asr_dataset_V1}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    gpus: all
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - mhdp-network
+
+networks:
+  mhdp-network:
+    external: true
