@@ -2,20 +2,48 @@ import argparse
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict, Tuple
 
 from fastapi import HTTPException
 
-from app import (
-    DEFAULT_INFERENCE_DEVICE,
-    diarize_audio_bytes,
-    infer_speaker_genders,
-    predict_gender_from_waveform,
-    prepare_gender_waveform,
-)
+
+def load_inference_components(
+    hf_token: str | None,
+) -> Tuple[
+    str,
+    Callable[[bytes, str, str], Dict[str, Any]],
+    Callable[[bytes, str], Any],
+    Callable[[Any, list[Dict[str, Any]], str], tuple[list[Dict[str, Any]], list[Dict[str, Any]]]],
+    Callable[[Any, str], Dict[str, Any]],
+]:
+    if hf_token:
+        os.environ["HF_TOKEN"] = hf_token
+
+    from app import (  # Local import ensures HF_TOKEN is set before app startup model loading.
+        DEFAULT_INFERENCE_DEVICE,
+        diarize_audio_bytes,
+        infer_speaker_genders,
+        predict_gender_from_waveform,
+        prepare_gender_waveform,
+    )
+
+    return (
+        DEFAULT_INFERENCE_DEVICE,
+        diarize_audio_bytes,
+        prepare_gender_waveform,
+        infer_speaker_genders,
+        predict_gender_from_waveform,
+    )
 
 
-def run_diarization_and_gender(audio_path: Path, device: str) -> Dict[str, Any]:
+def run_diarization_and_gender(
+    audio_path: Path,
+    device: str,
+    diarize_audio_bytes: Callable[[bytes, str, str], Dict[str, Any]],
+    prepare_gender_waveform: Callable[[bytes, str], Any],
+    infer_speaker_genders: Callable[[Any, list[Dict[str, Any]], str], tuple[list[Dict[str, Any]], list[Dict[str, Any]]]],
+    predict_gender_from_waveform: Callable[[Any, str], Dict[str, Any]],
+) -> Dict[str, Any]:
     if not audio_path.exists() or not audio_path.is_file():
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
@@ -52,8 +80,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--device",
         choices=["auto", "cpu", "gpu"],
-        default=DEFAULT_INFERENCE_DEVICE,
-        help="Inference device mode (default from INFERENCE_DEVICE env, fallback auto).",
+        default="auto",
+        help="Inference device mode (default: auto).",
+    )
+    parser.add_argument(
+        "--hf-token",
+        default=None,
+        help="Optional Hugging Face token. If omitted, uses HF_TOKEN from environment.",
     )
     parser.add_argument(
         "--output",
@@ -71,8 +104,32 @@ def main() -> None:
     args = parse_args()
     audio_path = Path(args.audio_path)
 
+    resolved_hf_token = args.hf_token or os.getenv("HF_TOKEN")
+    if not resolved_hf_token:
+        raise SystemExit(
+            "Inference failed: missing Hugging Face token. Set HF_TOKEN in your environment "
+            "or pass --hf-token."
+        )
+
+    (
+        default_inference_device,
+        diarize_audio_bytes,
+        prepare_gender_waveform,
+        infer_speaker_genders,
+        predict_gender_from_waveform,
+    ) = load_inference_components(resolved_hf_token)
+
+    requested_device = args.device or default_inference_device
+
     try:
-        result = run_diarization_and_gender(audio_path, args.device)
+        result = run_diarization_and_gender(
+            audio_path,
+            requested_device,
+            diarize_audio_bytes,
+            prepare_gender_waveform,
+            infer_speaker_genders,
+            predict_gender_from_waveform,
+        )
     except HTTPException as exc:
         message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
         raise SystemExit(f"Inference failed: {message}")
