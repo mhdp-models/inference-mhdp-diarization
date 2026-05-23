@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Tuple
 
 from fastapi import HTTPException
+from dotenv import load_dotenv
 
 
 def load_inference_components(
@@ -101,6 +102,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    load_dotenv()
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+
     args = parse_args()
     audio_path = Path(args.audio_path)
 
